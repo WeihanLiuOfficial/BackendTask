@@ -116,6 +116,28 @@ This README, inline docstrings, `Field()` descriptions, and phase-by-phase imple
 
 ## Quick Start
 
+### Option A — Startup scripts (recommended)
+
+After completing the one-time setup below, you can start both servers with a single command:
+
+**Windows (PowerShell):**
+```powershell
+.\start.ps1
+```
+
+**macOS / Linux:**
+```bash
+bash start.sh
+```
+
+This starts the database, opens the backend on `http://localhost:8000`, and the frontend on `http://localhost:3000` — each in its own terminal window.
+
+> The scripts assume the one-time setup (steps 1–4 below) has already been done.
+
+---
+
+### Option B — Manual setup (first time / full control)
+
 ### Prerequisites
 - Docker & Docker Compose (for the database)
 - Python 3.11+
