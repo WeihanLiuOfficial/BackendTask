@@ -309,7 +309,7 @@ export const CreateSurveyProvider = ({ children }) => {
       setQualityIssueMap({});
       setSurveyLevelIssues([]);
 
-      navigate(`/surveys/${result.id}`, { replace: true });
+      navigate(`/surveys/${result.id}`, { replace: true, state: { skipLoad: true } });
       onSurveyListChangedRef.current?.();
       toast.success(`Survey generated (${result.cache_hit ? "from cache" : "new"})!`);
 

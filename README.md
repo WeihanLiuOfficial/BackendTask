@@ -373,6 +373,47 @@ The `/generate` endpoint is rate-limited to 10 requests/minute per IP via `slowa
 
 ---
 
+## Survey Deletion & Recovery
+
+Surveys are never destroyed on first delete. A two-stage deletion model protects users from accidental data loss.
+
+### Stage 1 — Soft Delete (move to Recently Deleted)
+
+Hovering over any survey row in the left sidebar reveals a **trash icon** on the right side of the button. Clicking it soft-deletes the survey:
+
+- The survey is flagged `is_deleted = true` in the database and disappears from the active list immediately
+- It is **not** permanently gone — it can be recovered at any time
+- If the survey being deleted is currently open, the editor navigates away automatically
+
+```
+DELETE /api/v1/surveys/{id}   →   is_deleted = true, deleted_at = now()
+```
+
+### Stage 2 — Recently Deleted panel
+
+A **Recently Deleted** button sits at the bottom of the left sidebar. Clicking it opens a small panel anchored above the button, listing all soft-deleted surveys ordered by deletion date (most recent first).
+
+Each entry in the panel has two actions:
+
+| Action | What it does |
+|---|---|
+| **Restore** | Clears `is_deleted` and `deleted_at` — survey reappears in the active sidebar immediately |
+| **Delete forever** | Shows an inline confirmation prompt. On confirm, issues a hard `DELETE` — the row is permanently removed from the database and cannot be recovered |
+
+```
+PATCH  /api/v1/surveys/{id}/restore    →   is_deleted = false, deleted_at = null
+DELETE /api/v1/surveys/{id}/permanent  →   hard DELETE from DB (irreversible)
+GET    /api/v1/surveys/deleted         →   lists all soft-deleted surveys
+```
+
+### Why this design
+
+- **No accidental data loss** — a single mis-click on the trash icon does not permanently destroy a survey
+- **Deliberate permanent deletion** — requires two explicit actions (click "Delete forever" then confirm), preventing accidental permanent deletion
+- **Predictable UX** — mirrors the pattern used by Gmail, Notion, and macOS Trash
+
+---
+
 ## Future Enhancements
 
 - JWT-based multi-user authentication with role-based access control

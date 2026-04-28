@@ -154,9 +154,39 @@ export async function updateSurvey(id, data) {
   return handleResponse(res);
 }
 
-/** @param {string} id */
-export async function deleteSurvey(id) {
+/** Soft-delete a survey (moves it to Recently Deleted).
+ * @param {string} id
+ */
+export async function softDeleteSurvey(id) {
   const res = await fetch(`${API_BASE}/surveys/${id}`, {
+    method: "DELETE",
+    headers: headers(),
+  });
+  return handleResponse(res);
+}
+
+/** List all soft-deleted surveys for the Recently Deleted panel. */
+export async function getDeletedSurveys() {
+  const res = await fetch(`${API_BASE}/surveys/deleted`, { headers: headers() });
+  return handleResponse(res);
+}
+
+/** Restore a soft-deleted survey back to the active list.
+ * @param {string} id
+ */
+export async function restoreSurvey(id) {
+  const res = await fetch(`${API_BASE}/surveys/${id}/restore`, {
+    method: "PATCH",
+    headers: headers(),
+  });
+  return handleResponse(res);
+}
+
+/** Permanently and irreversibly delete a soft-deleted survey.
+ * @param {string} id
+ */
+export async function permanentlyDeleteSurvey(id) {
+  const res = await fetch(`${API_BASE}/surveys/${id}/permanent`, {
     method: "DELETE",
     headers: headers(),
   });

@@ -213,6 +213,64 @@ async def restore_survey(
     return _orm_to_response(survey)
 
 
+# ── Deleted Survey Management ────────────────────────
+
+
+async def list_deleted_surveys(db: AsyncSession) -> SurveyListResponse:
+    """Retrieve all soft-deleted surveys ordered by deletion date (most recent first).
+
+    Args:
+        db: Async database session.
+
+    Returns:
+        A SurveyListResponse containing only soft-deleted surveys.
+    """
+    result = await db.execute(
+        select(Survey)
+        .where(Survey.is_deleted == True)  # noqa: E712
+        .order_by(Survey.deleted_at.desc())
+    )
+    surveys = result.scalars().all()
+
+    items = [
+        SurveyListItem(
+            id=str(s.id),
+            title=LocalizedText(en=s.title_en, fr=s.title_fr),
+            created_at=s.created_at,
+            updated_at=s.updated_at,
+            has_quality_issues=False,
+        )
+        for s in surveys
+    ]
+    return SurveyListResponse(surveys=items, total=len(items))
+
+
+async def permanently_delete_survey(survey_id: uuid.UUID, db: AsyncSession) -> bool:
+    """Permanently and irreversibly delete a soft-deleted survey from the database.
+
+    Only surveys that are already soft-deleted can be permanently deleted.
+    This is a hard DELETE — no recovery is possible after this call.
+
+    Args:
+        survey_id: The UUID of the survey to permanently delete.
+        db: Async database session.
+
+    Returns:
+        True if found and deleted, False if not found or not soft-deleted.
+    """
+    result = await db.execute(
+        select(Survey).where(Survey.id == survey_id, Survey.is_deleted == True)  # noqa: E712
+    )
+    survey = result.scalar_one_or_none()
+
+    if survey is None:
+        return False
+
+    await db.delete(survey)
+    await db.flush()
+    return True
+
+
 # ── Private Helpers ──────────────────────────────────
 
 

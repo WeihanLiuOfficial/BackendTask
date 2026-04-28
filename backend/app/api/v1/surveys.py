@@ -46,6 +46,22 @@ async def list_surveys(
     return await survey_service.list_surveys(db)
 
 
+@router.get("/deleted", response_model=SurveyListResponse)
+async def list_deleted_surveys(
+    db: AsyncSession = Depends(get_db_session),
+    _auth: str = Depends(verify_bearer_token),
+) -> SurveyListResponse:
+    """List all soft-deleted surveys for the Recently Deleted panel.
+
+    Must be defined BEFORE /{survey_id} so FastAPI does not try to
+    parse the literal string 'deleted' as a UUID.
+
+    Returns:
+        A list of soft-deleted survey summaries ordered by deletion date.
+    """
+    return await survey_service.list_deleted_surveys(db)
+
+
 @router.get("/{survey_id}", response_model=SurveyResponse)
 async def get_survey(
     survey_id: UUID,
@@ -157,6 +173,29 @@ async def restore_survey(
             detail=f"Survey with id '{survey_id}' not found or is not deleted.",
         )
     return result
+
+
+
+@router.delete("/{survey_id}/permanent", status_code=204)
+async def permanently_delete_survey(
+    survey_id: UUID,
+    db: AsyncSession = Depends(get_db_session),
+    _auth: str = Depends(verify_bearer_token),
+) -> None:
+    """Permanently and irreversibly delete a soft-deleted survey.
+
+    This is a hard DELETE — the survey cannot be recovered after this call.
+    Only surveys that are already soft-deleted can be permanently deleted.
+
+    Args:
+        survey_id: The UUID of the soft-deleted survey to permanently destroy.
+    """
+    deleted = await survey_service.permanently_delete_survey(survey_id, db)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Survey with id '{survey_id}' not found or is not deleted.",
+        )
 
 
 # ── AI Generation Endpoint ──────────────────────────

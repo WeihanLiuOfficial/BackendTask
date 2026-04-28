@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams, useLocation } from "react-router-dom";
 import DashboardLayout from "../component/DashboardLayout";
 import CreateSurvey from "../component/CreateSurvey";
 import CreateSurveySidebar from "../component/CreateSurveySidebar";
@@ -9,6 +9,7 @@ import { useCreateSurveyProvider } from "../component/CreateSurveyProvider";
 const CreateSurveyPageInner = () => {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const aiMode = searchParams.get("ai") === "true";
   const { loadSurvey, resetSurvey } = useCreateSurveyProvider();
   const prevId = useRef(null);
@@ -16,12 +17,16 @@ const CreateSurveyPageInner = () => {
   useEffect(() => {
     if (id && id !== prevId.current) {
       prevId.current = id;
-      loadSurvey(id);
+      // Skip fetching if the navigate() call already populated state
+      // (e.g. immediately after AI generation which sets all fields in-memory)
+      if (!location.state?.skipLoad) {
+        loadSurvey(id);
+      }
     } else if (!id) {
       prevId.current = null;
       resetSurvey();
     }
-  }, [id, loadSurvey, resetSurvey]);
+  }, [id, loadSurvey, resetSurvey, location.state]);
 
   return (
     <div className="flex flex-col w-full h-full overflow-hidden">
