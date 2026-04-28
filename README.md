@@ -383,9 +383,20 @@ The `/generate` endpoint is rate-limited to 10 requests/minute per IP via `slowa
 
 ## Tech Choices
 
+### FastAPI over Flask
+
+Flask was the obvious alternative, but every core requirement of this project pushed toward FastAPI:
+
+- **Async I/O is not optional here.** This backend makes multiple outbound network calls per request: an embedding query to OpenAI, a vector similarity search in PostgreSQL, and a survey generation call to the LLM. Flask's synchronous WSGI model would block a worker thread on each of those calls. FastAPI's ASGI runtime handles them concurrently in the event loop — the same thread that's waiting for the embedding response can serve a different request in the meantime.
+
+- **Pydantic is a first-class citizen.** OpenAI's Structured Outputs feature requires a JSON schema derived from a Pydantic model. In FastAPI, the same Pydantic models that validate inbound requests and serialize outbound responses are also passed directly to OpenAI as `response_format`. There is no translation layer. Flask has no native Pydantic integration — you would need a third-party library and a separate schema definition for the LLM.
+
+- **Dependency injection is built in.** Database sessions, the OpenAI client, and the authenticated user are all injected via `Depends()`. In Flask, the equivalent pattern requires either global `g` objects (request-scoped globals) or application context workarounds — both of which are implicit and harder to test.
+
+- **OpenAPI docs are free.** `/docs` (Swagger UI) and `/redoc` are auto-generated from route signatures and Pydantic models with zero configuration. For a project being reviewed by external evaluators, this is directly useful.
+
 | Choice | Rationale |
 |---|---|
-| **FastAPI** over Flask | Native async, automatic OpenAPI docs, Pydantic integration, dependency injection |
 | **PostgreSQL 16 + pgvector** | Semantic caching without a separate vector database (Pinecone, Weaviate, etc.) |
 | **SQLAlchemy 2.0 (async)** | Type-safe ORM with native async sessions via asyncpg |
 | **Pydantic v2** | Strict schema validation for API contracts and LLM Structured Outputs |
