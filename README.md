@@ -65,7 +65,7 @@ The original frontend was React with no routing and no backend. The delivered ve
 
 ---
 
-## How Are Task Criterion Met
+## How The Task Criterion Are Met
 
 ### Architecture & Design
 - Strict separation of concerns: `api/` (routes) → `services/` (business logic) → `models/` (ORM) → `schemas/` (contracts)
