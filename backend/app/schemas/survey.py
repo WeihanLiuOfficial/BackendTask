@@ -12,7 +12,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.schemas.common import LocalizedText
+from app.schemas.common import LocalizedText, LocalizedTextInput
 
 
 # ── Question Type Enum ──────────────────────────────
@@ -42,9 +42,46 @@ class OptionSchema(BaseModel):
         description="The option text in both English and French.",
     )
 
+class QuestionInputSchema(BaseModel):
+    """Question schema used inside GenerateSurveyRequest.existing_questions.
+
+    Uses LocalizedTextInput so callers can send English-only questions
+    when requesting translation (fr is allowed to be empty).
+    """
+
+    id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()),
+        description="Unique identifier for the question.",
+    )
+    type: QuestionType = Field(
+        ...,
+        description="The question type.",
+    )
+    title: LocalizedTextInput = Field(
+        ...,
+        description="The main question text. fr may be empty when requesting translation.",
+    )
+    options: Optional[List["OptionInputSchema"]] = Field(
+        default=None,
+        description="Answer options. fr may be empty when requesting translation.",
+    )
+    saved: bool = Field(default=True)
+
+
+class OptionInputSchema(BaseModel):
+    """Option schema used inside GenerateSurveyRequest.existing_questions."""
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    text: LocalizedTextInput = Field(..., description="Option text. fr may be empty.")
+
+
+# Resolve forward reference
+QuestionInputSchema.model_rebuild()
+
 
 class QuestionSchema(BaseModel):
-    """A single survey question with its type, title, and optional choices."""
+    """A single survey question — strict bilingual schema used in responses,
+    saves, and as the LLM Structured Output target. Both en and fr are required."""
 
     id: str = Field(
         default_factory=lambda: str(uuid.uuid4()),
@@ -72,6 +109,7 @@ class QuestionSchema(BaseModel):
         default=True,
         description="Whether the question is in 'saved' (read-only) state. Always true for AI-generated questions.",
     )
+
 
 
 class SurveySchema(BaseModel):
@@ -146,9 +184,9 @@ class GenerateSurveyRequest(BaseModel):
         max_length=2000,
         description="The user's natural language description of the desired survey.",
     )
-    existing_questions: Optional[List[QuestionSchema]] = Field(
+    existing_questions: Optional[List[QuestionInputSchema]] = Field(
         default=None,
-        description="The user's manually authored questions. If provided, enables Hybrid or Translation modes.",
+        description="The user's manually authored questions. If provided, enables Hybrid or Translation modes. fr fields may be empty for Translation-Only mode.",
     )
     add_more_questions: bool = Field(
         default=True,

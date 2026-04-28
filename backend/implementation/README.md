@@ -36,3 +36,4 @@ PHASE_{number}_{short_description}.md
 | [PHASE_2_api_layer_and_crud.md](./PHASE_2_api_layer_and_crud.md) | API Layer & CRUD | ✅ Complete | Health endpoint, survey CRUD, Phase 1 debt fixes |
 | [PHASE_3_middleware_hardening.md](./PHASE_3_middleware_hardening.md) | Middleware Hardening | ✅ Complete | Option B auth, soft delete, Alembic pgvector fix |
 | [PHASE_4_ai_integration.md](./PHASE_4_ai_integration.md) | AI Integration | ✅ Complete | Semantic cache, Generator, Critic, Tri-Modal, rate limiter |
+| [PHASE_5_FRONTEND_INTEGRATION.md](./PHASE_5_FRONTEND_INTEGRATION.md) | Full-Stack Frontend | ✅ Complete | Router, API client, bilingual state, AI modal, Critic markers |

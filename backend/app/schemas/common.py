@@ -18,6 +18,18 @@ class LocalizedText(BaseModel):
     fr: str = Field(..., min_length=1, description="The French translation of the text.")
 
 
+class LocalizedTextInput(BaseModel):
+    """A bilingual text field used in generation/translation requests.
+
+    Unlike LocalizedText, the ``fr`` field is optional and may be an empty
+    string. This accommodates the Translation-Only modal where the caller
+    deliberately omits French content and asks the LLM to fill it in.
+    """
+
+    en: str = Field(..., min_length=1, description="The English text (required).")
+    fr: str = Field(default="", description="The French text. May be empty when requesting translation.")
+
+
 class ErrorResponse(BaseModel):
     """Standardized error response returned by all API error handlers.
 

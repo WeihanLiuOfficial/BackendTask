@@ -112,6 +112,18 @@ async def generate_survey(
             model=settings.OPENAI_MODEL,
         )
 
+    # ── Translation-Only: return without saving ───────────
+    # Translation-Only calls are a preprocessing step before a manual save.
+    # Persisting them would create a phantom duplicate survey in the DB.
+    # We also skip the semantic cache and Critic dispatch for the same reason.
+    if modality == "translation_only":
+        return GenerateSurveyResponse(
+            id="translation-preview",  # sentinel — frontend discards this
+            survey=survey_schema,
+            cache_hit=False,
+            modality=modality,
+        )
+
     # ── Step 3: Auto-Save to surveys table ───────────────
     save_payload = SurveyCreateRequest(
         title=survey_schema.title,
