@@ -21,13 +21,15 @@ class LocalizedText(BaseModel):
 class LocalizedTextInput(BaseModel):
     """A bilingual text field used in generation/translation requests.
 
-    Unlike LocalizedText, the ``fr`` field is optional and may be an empty
-    string. This accommodates the Translation-Only modal where the caller
-    deliberately omits French content and asks the LLM to fill it in.
+    Unlike LocalizedText, both fields are optional and may be empty strings.
+    This accommodates the Translation-Only mode where:
+      - The user writes in English → fr is empty, en has content
+      - The user writes in French  → en is empty, fr has content
+    The LLM fills in whichever side is missing.
     """
 
-    en: str = Field(..., min_length=1, description="The English text (required).")
-    fr: str = Field(default="", description="The French text. May be empty when requesting translation.")
+    en: str = Field(default="", description="The English text. May be empty when the user is authoring in French.")
+    fr: str = Field(default="", description="The French text. May be empty when the user is authoring in English.")
 
 
 class ErrorResponse(BaseModel):

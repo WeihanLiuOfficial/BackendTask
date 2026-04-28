@@ -1,128 +1,198 @@
-# Backend Task
+# Boundary AI Survey Generation Backend
 
-This task is designed to evaluate your backend skills, API design, code quality, architecture, and creativity. The goal is to augment the provided isolated frontend page with a fully working survey-generation feature.
-
-To do so you are asked to create an AI-powered survey generator that transforms a user’s brief description into a fully structured questionnaire, covering diverse question types (multiple-choice, ratings, open-text, etc.) tailored to their needs.
-
-## Description
-
-You have been given an isolated version of one page of our frontend (React + TypeScript): [https://github.com/BoundaryAIRecruitment/BackendTask](https://github.com/BoundaryAIRecruitment/BackendTask)
-
-Your job is to:
-
-* **Add a “Generate Survey” button to the page:**
-
-  * When clicked, it should prompt the user to enter a short survey description (e.g. “Customer satisfaction for an online store”).
-  * Once submitted, the frontend should call your new backend endpoint.
-
-* **Implement the backend (using Flask or FastAPI, your choice):**
-
-  * **Route(s):**
-
-    * A POST endpoint (e.g. `/api/surveys/generate`) that accepts the user’s description.
-  * **Logic & Integration:**
-
-    * Use the OpenAI API, or another LLM of your choice to generate a structured survey.
-    * It is recommended that the output be JSON-structured (e.g. `{ "title": "...", "questions": [ { "type": "...", "text": "..." }, … ] }`).
-  * **Storage:** save generated surveys for repeated prompts.
-
-    * Save the input and output in a PostGreSQL database; if an input is the same, you should fetch it instead of generate it.
-  * **Auto-fill:**
-
-    * Return the generated JSON so the frontend can render the new survey form automatically.
-
-## Tech Stack
-
-* **Language:** Python (3.11)
-* **Framework:** Flask or FastAPI
-* **AI Integration:** OpenAI API (or equivalent LLM)
-
-## What We are Evaluating
-
-* **Architecture & Design**
-
-  * Logical separation of concerns (routes, services, models), clear dependency injection or config management.
-* **Code Quality**
-
-  * Clean, modular, well-documented code following best practices and style guides.
-* **API Design**
-
-  * RESTful principles, clear request/response schemas, proper status codes and error messages.
-* **Integration & Robustness**
-
-  * Correct handling of API keys, timeouts, retries, input validation, and error cases.
-* **Performance & Security**
-
-  * Efficient request handling, minimal cold-start overhead, sanitization of inputs.
-* **Documentation**
-
-  * Clear README explaining setup, env vars, how to run, and any design decisions.
-
-## Submission
-
-Provide one of the following:
-
-* A GitHub repository (with public or private access) or a ZIP archive containing your code.
-* (Optional) A deployed version of your backend (e.g. on Heroku, Vercel Functions, or similar) with URL.
-
-Include a brief README that covers:
-
-* Tech choices (why Flask vs. FastAPI, any libraries you picked)
-* Setup & Run instructions (install, env vars, start server)
-* Areas of focus (What did you implement that other candidates might not have?)
-
-## Bonus Points
-
-* **Dockerization:** supply a Dockerfile and easy docker-compose setup.
-* **Testing:** Unit and/or integration tests covering core functionality.
-* **Authentication:** simple token check on your API.
-* **Rate limiting:** prevent abuse of the generation endpoint.
-* **Security:**
-
-Feel free to innovate beyond the spec. If you see an opportunity to improve UX or backend architecture, show us. Good luck!
+> **Task:** Build an AI-powered backend that transforms a user's brief description into a fully structured, bilingual survey questionnaire — and wire it to the provided React frontend.
 
 ---
+
+## Table of Contents
+
+- [What This Project Does](#what-this-project-does)
+- [Why This Implementation Stands Out](#why-this-implementation-stands-out)
+- [How Every Evaluation Criterion Is Met](#how-every-evaluation-criterion-is-met)
+- [Quick Start](#quick-start)
+- [Environment Variables](#environment-variables)
+- [API Endpoints](#api-endpoints)
+- [Architecture Overview](#architecture-overview)
+- [Bilingual Workflow](#bilingual-workflow)
+- [AI Generation Pipeline](#ai-generation-pipeline)
+- [Tech Choices](#tech-choices)
+- [Assumptions & Notes](#assumptions--notes)
+- [Future Enhancements](#future-enhancements)
+
 ---
 
-# Implementation — Boundary AI Survey Generation Backend
+## What This Project Does
 
-An AI-powered survey generation engine built with **FastAPI**, **PostgreSQL 16 (pgvector)**, and **OpenAI GPT-4o-mini**. Implements a Tri-Modal generation pipeline with semantic caching, an Optimistic Actor-Critic AI pattern, and full bilingual (EN/FR) support.
+This is a production-grade FastAPI backend for AI-powered bilingual survey generation. It connects to a React frontend and enables three distinct modes of survey creation:
+
+1. **Manual authoring** — users write surveys by hand in English or French
+2. **Full AI generation** — users describe a survey topic and the AI generates a complete questionnaire
+3. **Hybrid expansion** — users start with a few manual questions and let the AI generate complementary ones
+
+All surveys are stored fully bilingual (English + French). If a user writes only in one language, the system automatically translates to the other on save — with no extra clicks required.
+
+---
+
+## Why This Implementation Stands Out
+
+### Tri-Modal AI Pipeline
+Rather than a single "generate everything" endpoint, the backend detects context from the request payload and executes the appropriate mode automatically:
+
+| Mode | Trigger | Behavior |
+|---|---|---|
+| **Zero-to-One** | No existing questions | Full survey synthesis from scratch |
+| **Hybrid Expansion** | Existing questions + `add_more_questions=true` | Keeps user's questions, generates complementary new ones |
+| **Translation-Only** | Existing questions + `add_more_questions=false` | Translates content only — no new questions added |
+
+### Optimistic Actor-Critic Pattern
+- **Agent 1 (Generator)** responds immediately within the HTTP request — no waiting
+- **Agent 2 (Critic)** runs asynchronously via `BackgroundTasks` after the response is returned, auditing the survey for bias, ambiguity, poor phrasing, and French translation quality
+- Quality issues are written to the database and surfaced in the UI without blocking the user
+
+### Semantic Cache with pgvector
+Instead of a separate vector database (Pinecone, Weaviate), semantic similarity search is done directly in PostgreSQL using the `pgvector` extension with an HNSW index. Similar prompts (cosine similarity >= 0.95) return cached results instantly — no OpenAI call, no latency.
+
+### Full Bilingual Support (EN/FR)
+Every text field at every level (survey title, description, question titles, answer options) is stored as a bilingual `{en, fr}` object. The UI lets users write in one language and auto-translates the rest — see [Bilingual Workflow](#bilingual-workflow).
+
+### Fully Integrated Frontend
+The original frontend was React with no routing and no backend. The delivered version includes:
+- `react-router-dom` navigation (`/surveys`, `/surveys/new`, `/surveys/:id`)
+- Language toggle (EN/FR) with live switching
+- AI Generate modal with optional question counts and hybrid expansion
+- Critic audit button with 30-second polling for async results
+- Inline quality issue display with severity-based coloring
+- Auto-translation on first save (no extra user action required)
+
+---
+
+## How Every Evaluation Criterion Is Met
+
+### Architecture & Design
+- Strict separation of concerns: `api/` (routes) → `services/` (business logic) → `models/` (ORM) → `schemas/` (contracts)
+- FastAPI dependency injection for database sessions and OpenAI client
+- `generation_service.py` orchestrates AI; `survey_service.py` handles CRUD only — neither imports the other's internal logic
+- All configuration validated at startup via Pydantic `Settings`
+
+### Code Quality
+- Every function has explicit type hints and return types
+- All Pydantic models use `Field()` with descriptions — these descriptions feed directly into OpenAI's Structured Outputs schema
+- Docstrings on all public functions and classes
+- Tenacity retry decorators on all OpenAI calls (3 attempts, exponential backoff)
+
+### API Design
+- RESTful resource naming (`/api/v1/surveys`, `/api/v1/surveys/{id}`)
+- Separate request schemas (`SurveyCreateRequest`, `GenerateSurveyRequest`) from response schemas (`SurveyResponse`, `GenerateSurveyResponse`)
+- Proper HTTP status codes: `201` on create, `404` with structured `ErrorResponse` on not found, `422` on validation failure
+- OpenAPI docs auto-generated at `/docs`
+
+### Integration & Robustness
+- All OpenAI calls wrapped in Tenacity retries
+- Structured Outputs (`response_format=SurveySchema`) — LLM output is constrained to the exact Pydantic schema, eliminating JSON parsing failures
+- Input validation enforced at the schema level with `min_length`, `max_length`, and enum constraints
+- Graceful error handling throughout: translation failures surface as user-readable toasts, not crashes
+
+### Performance & Security
+- **Async everything:** FastAPI + SQLAlchemy 2.0 async + asyncpg — no thread blocking at any layer
+- **Semantic cache:** repeated or similar prompts skip the LLM call entirely (O(log n) HNSW lookup)
+- **Critic decoupled:** zero latency impact from quality auditing
+- **Bearer token auth:** configurable via `API_BEARER_TOKEN` env var
+- **Rate limiting:** 10 requests/minute per IP on the `/generate` endpoint (configurable)
+- **Soft delete:** surveys are never permanently destroyed
+
+### Documentation
+This README, inline docstrings, `Field()` descriptions, and phase-by-phase implementation logs in `backend/implementation/`.
+
+### Bonus Points
+
+| Bonus | Status |
+|---|---|
+| Dockerization | Dockerfile + `docker-compose.yml` included |
+| Authentication | Bearer token middleware on all endpoints except `/health` |
+| Rate limiting | `slowapi` on `/generate` — 10 req/min per IP, configurable |
+| Testing | Test stubs in `backend/tests/` |
 
 ---
 
 ## Quick Start
 
+### Prerequisites
+- Docker & Docker Compose (for the database)
+- Python 3.11+
+- Node.js 18+ (for the frontend)
+- An OpenAI API key
+
+### 1. Clone and configure
+
 ```bash
-# 1. Clone and enter the project
-git clone <repo-url> && cd BackendTask
+git clone <repo-url>
+cd BackendTask
 
-# 2. Copy environment template
 cp backend/.env.example backend/.env
-# Edit backend/.env and add your OPENAI_API_KEY
-
-# 3. Start the database
-docker-compose up -d db
-
-# 4. Set up Python environment
-cd backend
-python -m venv .venv
-.venv/Scripts/pip install -r requirements.txt    # Windows
-# source .venv/bin/activate && pip install -r requirements.txt  # macOS/Linux
-
-# 5. Run database migrations
-# Windows PowerShell:
-$env:PYTHONPATH = "."; .venv/Scripts/alembic upgrade head
-# macOS/Linux:
-# PYTHONPATH=. alembic upgrade head
-
-# 6. Start the API server
-$env:PYTHONPATH = "."; .venv/Scripts/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-# 7. Start the frontend (in a separate terminal)
-cd frontend && npm install && npm start
+# Open backend/.env and set your OPENAI_API_KEY
 ```
 
-**Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs)
+### 2. Start the database
+
+```bash
+docker-compose up -d db
+```
+
+### 3. Set up the Python environment
+
+```bash
+cd backend
+
+# Create virtualenv
+python -m venv .venv
+
+# Activate (Windows PowerShell)
+.venv\Scripts\Activate.ps1
+
+# Activate (macOS/Linux)
+# source .venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+### 4. Run database migrations
+
+```bash
+# Windows PowerShell
+$env:PYTHONPATH = "."; .venv\Scripts\alembic upgrade head
+
+# macOS/Linux
+# PYTHONPATH=. alembic upgrade head
+```
+
+### 5. Start the backend
+
+```bash
+# Windows PowerShell
+$env:PYTHONPATH = "."; .venv\Scripts\uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# macOS/Linux
+# PYTHONPATH=. uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Swagger UI: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+### 6. Start the frontend
+
+Open a new terminal:
+
+```bash
+cd frontend
+npm install
+
+# Windows PowerShell
+$env:DANGEROUSLY_DISABLE_HOST_CHECK="true"; npm start
+
+# macOS/Linux
+# DANGEROUSLY_DISABLE_HOST_CHECK=true npm start
+```
+
+Frontend: [http://localhost:3000](http://localhost:3000)
 
 ---
 
@@ -132,12 +202,12 @@ cd frontend && npm install && npm start
 |---|---|---|
 | `DATABASE_URL` | `postgresql+asyncpg://boundary:boundary_secret@localhost:5432/boundary_surveys` | Async PostgreSQL connection string |
 | `OPENAI_API_KEY` | *(required)* | Your OpenAI API key |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Model for survey generation |
-| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Model for prompt embeddings |
-| `API_BEARER_TOKEN` | `disabled` | Set to `disabled` for open access; set to any string to enable Bearer auth |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Model used for survey generation and translation |
+| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Model used for semantic cache embeddings |
+| `API_BEARER_TOKEN` | `disabled` | Set to `disabled` for open access; set to any string to require `Authorization: Bearer <token>` |
 | `CORS_ORIGINS` | `["http://localhost:3000"]` | Allowed CORS origins |
 | `SIMILARITY_THRESHOLD` | `0.95` | Cosine similarity threshold for semantic cache hits |
-| `RATE_LIMIT` | `10/minute` | Rate limit for the generation endpoint |
+| `RATE_LIMIT` | `10/minute` | Rate limit for the `/generate` endpoint |
 | `LOG_LEVEL` | `INFO` | Logging verbosity |
 
 ---
@@ -153,90 +223,153 @@ cd frontend && npm install && npm start
 | `PUT` | `/api/v1/surveys/{id}` | Update an existing survey |
 | `DELETE` | `/api/v1/surveys/{id}` | Soft-delete a survey |
 | `PATCH` | `/api/v1/surveys/{id}/restore` | Restore a soft-deleted survey |
-| `POST` | `/api/v1/surveys/generate` | AI-powered survey generation |
+| `POST` | `/api/v1/surveys/generate` | AI-powered survey generation (Tri-Modal) |
+| `POST` | `/api/v1/surveys/{id}/audit` | Manually trigger Critic quality audit |
+
+All endpoints (except `/health`) require `Authorization: Bearer <token>` when `API_BEARER_TOKEN` is set.
 
 ---
 
-## Authentication
-
-Authentication uses **Bearer token** via the `Authorization` header.
-
-**Default behavior:** Authentication is **disabled** out of the box (`API_BEARER_TOKEN=disabled` in `.env.example`). This ensures zero-friction setup for reviewers — the API works immediately after cloning.
-
-**To enable authentication:** Set `API_BEARER_TOKEN` to any secret string in your `.env` file. All endpoints (except `/health`) will then require:
-
-```
-Authorization: Bearer your-secret-string
-```
-
-> **Note on authentication scope:** This implementation uses a single shared token for all users. There is no concept of per-user identity or role-based access control. In a production multi-tenant system, this would be replaced with JWT tokens carrying user IDs and scoped permissions. The current design is intentionally simple to match the scope of the task while demonstrating the auth pattern.
-
----
-
-## Semantic Cache (pgvector + HNSW)
-
-To avoid redundant OpenAI API calls, the system implements a **semantic similarity cache** using PostgreSQL's `pgvector` extension.
-
-**How it works:**
-1. When a user submits a generation prompt, the prompt is converted to a 1536-dimensional vector using OpenAI's `text-embedding-3-small` model.
-2. The vector is compared against all cached prompt vectors using cosine similarity.
-3. If a cached prompt has similarity > 0.95 (configurable via `SIMILARITY_THRESHOLD`), the cached result is returned immediately — no LLM call is made.
-4. On a cache miss, the LLM generates the survey and the result is stored in the cache for future lookups.
-
-**Index configuration:** The `prompt_embedding` column uses an **HNSW (Hierarchical Navigable Small World)** index with `vector_cosine_ops` for fast approximate nearest-neighbor search. This reduces similarity lookups from O(n) full table scans to O(log n) graph traversals.
-
-The HNSW index uses default parameters:
-- **`m = 16`** — Maximum number of connections per node in the graph. Higher values increase recall accuracy but consume more memory and slow down insertions.
-- **`ef_construction = 64`** — Size of the dynamic candidate list during index construction. Higher values produce a more accurate index at the cost of slower build times.
-
-These defaults are well-suited for up to ~100,000 cached vectors. For larger deployments, tuning `m` and `ef_construction` would be recommended based on recall/latency benchmarks.
-
----
-
-## Architecture Highlights
-
-- **Async everything:** FastAPI + SQLAlchemy 2.0 async + asyncpg. No thread blocking.
-- **Optimistic Actor-Critic pattern:** Agent 1 (Generator) returns immediately; Agent 2 (Critic) audits quality in the background via `BackgroundTasks`.
-- **Tri-Modal generation:** Zero-to-One (full synthesis), Hybrid (context-aware expansion), and Translation/Formatting modes.
-- **Soft delete:** Surveys are never permanently removed. They are flagged as deleted and can be restored.
-- **Bilingual support:** All text fields support English and French (`LocalizedText` schema).
-- **Structured Outputs:** OpenAI responses are constrained to a strict JSON schema for reliable parsing.
-
----
-
-## Project Structure
+## Architecture Overview
 
 ```
 backend/
 ├── app/
 │   ├── api/v1/           # Route handlers (health, surveys)
-│   ├── middleware/        # Auth middleware
+│   ├── middleware/        # Auth + rate limiting
 │   ├── models/            # SQLAlchemy ORM models
-│   ├── schemas/           # Pydantic request/response schemas
-│   ├── services/          # Business logic (survey CRUD, AI agents)
-│   │   └── ai/            # Generator, Critic, Semantic Cache
-│   ├── config.py          # Pydantic settings (env var validation)
+│   ├── schemas/           # Pydantic request/response/LLM schemas
+│   ├── services/          # Business logic
+│   │   ├── generation_service.py   # AI orchestration (Tri-Modal pipeline)
+│   │   ├── survey_service.py       # CRUD only
+│   │   └── ai/
+│   │       ├── generator.py        # Agent 1: survey generation
+│   │       ├── critic.py           # Agent 2: quality audit
+│   │       └── prompts.py          # System prompt builder
+│   ├── config.py          # Pydantic Settings (env var validation)
 │   ├── dependencies.py    # FastAPI dependency injection
 │   └── main.py            # Application factory + lifespan
 ├── alembic/               # Database migrations
 ├── implementation/        # Phase-by-phase implementation logs
-├── tests/                 # Test stubs
+├── tests/
 ├── requirements.txt
 └── Dockerfile
 ```
+
+**Key architectural decisions:**
+- `generation_service.py` and `survey_service.py` are intentionally decoupled — AI orchestration and CRUD never import each other's internals
+- All database sessions are injected via FastAPI `Depends()` — no global state
+- OpenAI client is created once at startup and shared via `app.state`
+
+---
+
+## Bilingual Workflow
+
+Every survey is stored with full bilingual content — English and French versions of every title, description, question, and answer option.
+
+### Write once, translate automatically
+
+The user writes in **one language at a time**. The EN/FR toggle in the top bar switches the editing context. On save, the system detects which language is missing and silently calls the AI in Translation-Only mode to fill it in.
+
+**Recommended workflow:**
+
+1. Write the entire survey in English (or French) — title, description, all questions
+2. Click **Save Survey**
+3. The system auto-translates everything to the other language in the background
+4. Switch to the other language tab and edit any translations that need refinement
+
+**Why this saves time:**
+
+Without auto-translation, creating a 10-question bilingual survey requires creating 20 questions (10 EN + 10 FR, including navigating and clicking "Add Question" for each). With auto-translation, the user creates 10 questions once. The AI generates all counterparts in a single call. The user only edits the translations that need refinement.
+
+### How it works technically
+
+```
+User clicks "Save Survey" (English-only)
+    │
+    ├── Frontend detects French fields are empty
+    │
+    ├── POST /api/v1/surveys/generate
+    │       { existing_questions: [...], add_more_questions: false }
+    │       ↳ Translation-Only mode: LLM fills in French fields only
+    │       ↳ Result returned — NOT saved to DB (preprocessing step only)
+    │
+    └── POST /api/v1/surveys
+            { title: {en, fr}, description: {en, fr}, questions: [...] }
+            ↳ Saved to DB as one complete bilingual survey
+```
+
+Auto-translation works in both directions:
+
+| User writes in | What gets auto-filled |
+|---|---|
+| English | All French fields |
+| French | All English fields |
+
+---
+
+## AI Generation Pipeline
+
+### Semantic Cache
+
+Before calling the LLM, every generation prompt is embedded using `text-embedding-3-small` (1536 dimensions) and compared against cached prompts using cosine similarity.
+
+- **Threshold:** 0.95 (configurable via `SIMILARITY_THRESHOLD`)
+- **Index:** HNSW (`m=16`, `ef_construction=64`) on `survey_cache.prompt_embedding` for O(log n) approximate nearest-neighbor search
+- **Scope:** Cache only applies to Zero-to-One mode. Hybrid and Translation-Only calls are context-dependent and are never cached
+
+On a cache hit: the stored survey is returned immediately with no LLM call.  
+On a cache miss: the LLM generates the survey and the result is stored for future lookups.
+
+### Quality Critic (Agent 2)
+
+The Critic agent evaluates surveys asynchronously after the HTTP response is returned — zero latency impact.
+
+**Trigger policy:**
+- Auto-runs on AI-generated surveys (cache misses only)
+- Manual trigger via `POST /api/v1/surveys/{id}/audit` for any survey
+- Does not auto-run on manual saves (cost optimization)
+
+**What it evaluates:**
+- *Question-level:* bias, leading phrasing, ambiguity, missing options, poor translations
+- *Survey-level:* question type fatigue, survey length, logical ordering, coverage gaps
+
+Results are written to `surveys.quality_issues` (JSONB) and displayed inline in the UI with severity badges (info / warning / critical).
+
+### Rate Limiting
+
+The `/generate` endpoint is rate-limited to 10 requests/minute per IP via `slowapi`. Configurable via `RATE_LIMIT` in `.env`. Other endpoints are not rate-limited.
 
 ---
 
 ## Tech Choices
 
-| Choice | Why |
+| Choice | Rationale |
 |---|---|
-| **FastAPI** over Flask | Native async support, automatic OpenAPI docs, Pydantic integration, dependency injection |
-| **PostgreSQL 16 + pgvector** | Semantic caching with vector similarity — eliminates the need for a separate vector database (Pinecone, Weaviate) |
-| **SQLAlchemy 2.0 (Async)** | Type-safe ORM with native async session support via asyncpg |
-| **Pydantic v2** | Strict schema validation for both API contracts and LLM output enforcement |
-| **JSONB** for survey data | Enables flexible, indexable document storage for deeply nested question/option trees without over-normalized joins |
-| **Docker Compose** | One-command infrastructure setup for the reviewer |
+| **FastAPI** over Flask | Native async, automatic OpenAPI docs, Pydantic integration, dependency injection |
+| **PostgreSQL 16 + pgvector** | Semantic caching without a separate vector database (Pinecone, Weaviate, etc.) |
+| **SQLAlchemy 2.0 (async)** | Type-safe ORM with native async sessions via asyncpg |
+| **Pydantic v2** | Strict schema validation for API contracts and LLM Structured Outputs |
+| **JSONB** for survey data | Flexible, indexable document storage for nested question/option trees without over-normalized joins |
+| **Tenacity** | Declarative retry logic on OpenAI calls with exponential backoff |
+| **slowapi** | Lightweight rate limiting that integrates directly with FastAPI |
+| **Docker Compose** | One-command database setup for reviewers |
+
+---
+
+## Assumptions & Notes
+
+**Authentication:** The API uses a single shared Bearer token (`API_BEARER_TOKEN` env var). There is no per-user identity or role-based access. Authentication is disabled by default (`API_BEARER_TOKEN=disabled`) so reviewers can test immediately without configuration. In a production multi-tenant system this would be replaced with JWT tokens carrying user IDs.
+
+**Semantic cache is global:** All users share the same cached results. Since there are no user accounts in this system, there is no per-user context to segment by. In a future multi-tenant deployment, cache entries would be scoped by organization ID.
+
+**Critic does not re-run on edits:** The Critic auto-runs once when a survey is first generated. Manual edits do not re-trigger it automatically. Users can trigger a manual re-audit via the Audit button in the UI or the `POST /audit` endpoint directly.
+
+**Translation-Only mode does not auto-save:** When the frontend calls `/generate` in Translation-Only mode (as part of the save flow), the backend returns translated content only and does not write to the database. The subsequent manual save call creates the single persisted record. This prevents phantom duplicate surveys from appearing in the sidebar.
+
+**Frontend dev server host check:** The React dev server requires `DANGEROUSLY_DISABLE_HOST_CHECK=true` because it uses the CRA proxy to forward `/api/v1/*` requests to the FastAPI backend on port 8000. This flag is for development only and has no effect on production builds.
+
+**Short survey titles (< 5 chars):** The `/generate` endpoint requires `prompt` to be at least 5 characters. If a survey title is shorter (e.g. "Food"), the frontend automatically prefixes it with `"Translate survey: "` before sending to the translation call, ensuring the validation constraint is always met while still giving the LLM meaningful context.
 
 ---
 
@@ -247,47 +380,4 @@ backend/
 - WebSocket streaming for real-time generation progress
 - Pagination on the survey list endpoint
 - Admin dashboard for cache analytics and hit rate monitoring
-
----
-
-## AI Generation Pipeline
-
-### Tri-Modal Generation
-
-The /api/v1/surveys/generate endpoint supports three execution paths determined automatically from the request payload:
-
-| Modality | Trigger | Behavior |
-|---|---|---|
-| **Zero-to-One** | No existing questions | Full survey synthesis from scratch |
-| **Hybrid Expansion** | Existing questions + dd_more_questions=true | Keeps existing, generates complementary new ones |
-| **Translation-Only** | Existing questions + dd_more_questions=false | Formats and translates, no new questions |
-
-### Semantic Cache
-
-The cache is **global** � all users share the same cached results. This is intentional: there are no user accounts in the current system, so there is no per-user context to segment by. In a future multi-tenant deployment, cache entries would be scoped by organization or user ID.
-
-- **Model:** 	ext-embedding-3-small (1536 dimensions)
-- **Similarity threshold:**  .95 cosine similarity (configurable via SIMILARITY_THRESHOLD in .env)
-- **Index:** HNSW on survey_cache.prompt_embedding with m=16, ef_construction=64
-- **Scope:** Cache only applies to Zero-to-One mode. Hybrid and Translation-Only are context-dependent and never cached.
-
-### Quality Critic (Agent 2)
-
-The Critic agent evaluates generated surveys for quality issues **asynchronously** after the HTTP response is returned, so it has zero impact on response latency.
-
-**Trigger policy:**
-- **Auto-runs** on AI-generated surveys (cache misses only � cached results were already audited when first generated)
-- **Manual trigger** via POST /api/v1/surveys/{id}/audit for any survey (AI or manually authored)
-- Does **not** auto-run on manual creates/updates (cost optimization)
-
-**Evaluation dimensions:**
-- *Question-level:* bias, leading phrasing, ambiguity, poor French translation, missing options
-- *Survey-level:* question type fatigue, survey length, logical ordering, missing coverage
-
-Results are written to surveys.quality_issues (JSONB). 
-ull = not yet audited, [] = audited and clean.
-
-### Rate Limiting
-
-The /generate endpoint is rate-limited to 10 requests/minute per IP (configurable via RATE_LIMIT in .env). Other endpoints are not rate-limited.
-
+- WebSocket or SSE instead of polling for Critic audit results
