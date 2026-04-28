@@ -15,6 +15,7 @@
 - [AI Generation Pipeline](#ai-generation-pipeline)
 - [Tech Choices](#tech-choices)
 - [Assumptions & Notes](#assumptions--notes)
+- [Survey Deletion & Recovery](#survey-deletion--recovery)
 - [Future Enhancements](#future-enhancements)
 
 ---
@@ -27,7 +28,7 @@ This is a production-grade FastAPI backend for AI-powered bilingual survey gener
 2. **Full AI generation** — users describe a survey topic and the AI generates a complete questionnaire
 3. **Hybrid expansion** — users start with a few manual questions and let the AI generate complementary ones
 
-All surveys are stored fully bilingual (English + French). If a user writes only in one language, the system automatically translates to the other on save — with no extra clicks required.
+All surveys are stored fully bilingual (English + French). If a user writes in one language and has added at least one question, the system automatically translates to the other on save — with no extra clicks required.
 
 ---
 
@@ -96,7 +97,7 @@ The original frontend was React with no routing and no backend. The delivered ve
 - **Critic decoupled:** zero latency impact from quality auditing
 - **Bearer token auth:** configurable via `API_BEARER_TOKEN` env var
 - **Rate limiting:** 10 requests/minute per IP on the `/generate` endpoint (configurable)
-- **Soft delete:** surveys are never permanently destroyed
+- **Soft delete:** surveys go to a Recently Deleted bin; permanent deletion requires an explicit second confirmation
 
 ### Documentation
 This README, inline docstrings, `Field()` descriptions, and phase-by-phase implementation logs in `backend/implementation/`.
@@ -237,12 +238,14 @@ Frontend: [http://localhost:3000](http://localhost:3000)
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/api/v1/health` | Health check (API + database probe) |
-| `GET` | `/api/v1/surveys` | List all surveys |
+| `GET` | `/api/v1/surveys` | List all active surveys |
+| `GET` | `/api/v1/surveys/deleted` | List soft-deleted surveys |
 | `GET` | `/api/v1/surveys/{id}` | Get a specific survey |
 | `POST` | `/api/v1/surveys` | Create a manually authored survey |
 | `PUT` | `/api/v1/surveys/{id}` | Update an existing survey |
-| `DELETE` | `/api/v1/surveys/{id}` | Soft-delete a survey |
+| `DELETE` | `/api/v1/surveys/{id}` | Soft-delete a survey (move to Recently Deleted) |
 | `PATCH` | `/api/v1/surveys/{id}/restore` | Restore a soft-deleted survey |
+| `DELETE` | `/api/v1/surveys/{id}/permanent` | Permanently delete a survey (irreversible) |
 | `POST` | `/api/v1/surveys/generate` | AI-powered survey generation (Tri-Modal) |
 | `POST` | `/api/v1/surveys/{id}/audit` | Manually trigger Critic quality audit |
 
@@ -289,7 +292,7 @@ Every survey is stored with full bilingual content — English and French versio
 
 ### Write once, translate automatically
 
-The user writes in **one language at a time**. The EN/FR toggle in the top bar switches the editing context. On save, the system detects which language is missing and silently calls the AI in Translation-Only mode to fill it in.
+The user writes in **one language at a time**. The EN/FR toggle in the top bar switches the editing context. On save, if the survey has at least one question and the other language is incomplete, the system silently calls the AI in Translation-Only mode to fill it in. Title-only drafts (no questions yet) are saved as-is — translation fires the first time questions are present.
 
 **Recommended workflow:**
 
@@ -475,9 +478,10 @@ POST /api/v1/surveys/{id}/export/google-forms
     ├── Fetch survey from DB (already bilingual, already structured)
     │
     ├── Map internal schema → Google Forms batchUpdate request body
-    │       question.type = "shortAnswer"  →  TextItem
-    │       question.type = "multipleChoice" →  ChoiceItem (RADIO)
-    │       question.type = "checkbox"  →  ChoiceItem (CHECKBOX)
+    │       question.type = "shortAnswer"    →  TextItem
+    │       question.type = "multipleChoice"  →  ChoiceItem (RADIO)
+    │       question.type = "singleChoice"    →  ChoiceItem (RADIO, single-select)
+    │       question.type = "scale"           →  ScaleItem
     │
     ├── POST forms.googleapis.com/v1/forms  (create blank form)
     │

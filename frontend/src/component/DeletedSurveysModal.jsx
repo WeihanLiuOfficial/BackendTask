@@ -31,7 +31,13 @@ const DeletedSurveysModal = ({ isOpen, onClose, onRestored }) => {
   }, []);
 
   useEffect(() => {
-    if (isOpen) fetchDeleted();
+    if (isOpen) {
+      fetchDeleted();
+    } else {
+      // Reset pending-confirm state so reopening the panel never shows
+      // a stale confirmation dialog from a previous interaction.
+      setConfirmId(null);
+    }
   }, [isOpen, fetchDeleted]);
 
   const handleRestore = async (id) => {
@@ -59,26 +65,14 @@ const DeletedSurveysModal = ({ isOpen, onClose, onRestored }) => {
   return (
     <AnimatePresence>
       {isOpen && (
-        <>
-          {/* Backdrop — clicking outside closes the panel */}
-          <motion.div
-            key="backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="fixed inset-0 z-40"
-          />
-
-          {/* Panel — anchored bottom-left above the sidebar footer button */}
-          <motion.div
-            key="panel"
-            initial={{ opacity: 0, y: 12, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 12, scale: 0.97 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
-            className="fixed bottom-14 left-2 z-50 w-64 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden"
-          >
+        <motion.div
+          key="panel"
+          initial={{ opacity: 0, y: 12, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 12, scale: 0.97 }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
+          className="fixed bottom-14 left-2 z-50 w-64 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden"
+        >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
               <div className="flex items-center gap-2">
@@ -176,7 +170,6 @@ const DeletedSurveysModal = ({ isOpen, onClose, onRestored }) => {
               )}
             </div>
           </motion.div>
-        </>
       )}
     </AnimatePresence>
   );

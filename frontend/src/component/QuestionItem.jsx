@@ -22,7 +22,6 @@ const QuestionItem = ({ question, index }) => {
     handleSaveQuestion,
     handleEditQuestion,
     handleDuplicate,
-    dupList,
     qualityIssueMap,
     activeLang,
   } = useCreateSurveyProvider();
@@ -40,7 +39,7 @@ const QuestionItem = ({ question, index }) => {
             question={q}
             option={option}
             optionIndex={optionIndex}
-            dupList={dupList}
+            dupList={[]}
           />
         ));
       case "singleChoice":
@@ -51,7 +50,7 @@ const QuestionItem = ({ question, index }) => {
             question={q}
             option={option}
             optionIndex={optionIndex}
-            dupList={dupList}
+            dupList={[]}
           />
         ));
       case "openQuestion":

@@ -180,6 +180,7 @@ async def delete_survey(
 
     survey.is_deleted = True
     survey.deleted_at = datetime.now(timezone.utc)
+    await db.flush()
 
     return True
 
@@ -240,7 +241,6 @@ async def list_deleted_surveys(db: AsyncSession) -> SurveyListResponse:
             id=str(s.id),
             title=LocalizedTextInput(en=s.title_en, fr=s.title_fr),
             created_at=s.created_at,
-            updated_at=s.updated_at,
             has_quality_issues=False,
         )
         for s in surveys

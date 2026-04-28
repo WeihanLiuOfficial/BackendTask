@@ -421,12 +421,20 @@ export const CreateSurveyProvider = ({ children }) => {
       setIsAddingOption(true);
       setQuestions((prev) => {
         const next = [...prev];
-        if (!next[questionIndex].options) next[questionIndex].options = [];
-        next[questionIndex].options.push({
-          id: `opt-${Date.now()}-${Math.random()}`,
-          text: "",
-          textBilingual: { en: "", fr: "" },
-        });
+        const q = next[questionIndex];
+        // Create a new question object with a new options array — do NOT mutate
+        // the existing object, as React.memo and useCallback deps use === identity.
+        next[questionIndex] = {
+          ...q,
+          options: [
+            ...(q.options || []),
+            {
+              id: crypto.randomUUID(),
+              text: "",
+              textBilingual: { en: "", fr: "" },
+            },
+          ],
+        };
         setTimeout(() => setIsAddingOption(false), 0);
         return next;
       });
@@ -573,9 +581,6 @@ export const CreateSurveyProvider = ({ children }) => {
         onDragEnd,
         // sidebar refresh
         setOnSurveyListChanged,
-        // legacy compat
-        dupList: [],
-        handleCreateSurvey: handleSaveSurvey,
       }}
     >
       {children}
