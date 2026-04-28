@@ -1,7 +1,5 @@
 # Boundary AI Survey Generation Backend
 
-> **Task:** Build an AI-powered backend that transforms a user's brief description into a fully structured, bilingual survey questionnaire — and wire it to the provided React frontend.
-
 ---
 
 ## Table of Contents
@@ -358,6 +356,22 @@ The Critic agent evaluates surveys asynchronously after the HTTP response is ret
 
 Results are written to `surveys.quality_issues` (JSONB) and displayed inline in the UI with severity badges (info / warning / critical).
 
+**Fixing issues and re-auditing:**
+
+When the user edits a survey to fix a reported issue and clicks **Save Survey**, the audit results are automatically cleared:
+
+- The issue badges disappear from the editor immediately
+- The red dot disappears from the sidebar survey button
+- In the database, `quality_issues` is set to `null`, signalling "not yet audited" (distinct from `[]` which means "audited and clean")
+
+This prevents stale audit results from persisting after the survey content has changed. Once the user is satisfied with their edits, they can click the **Audit** button to trigger a fresh Critic evaluation.
+
+| `quality_issues` value | Meaning |
+|---|---|
+| `null` | Not yet audited (new survey, or edited since last audit) |
+| `[]` | Audited — no issues found |
+| `[{...}, ...]` | Audited — issues found, shown in the editor |
+
 ### Rate Limiting
 
 The `/generate` endpoint is rate-limited to 10 requests/minute per IP via `slowapi`. Configurable via `RATE_LIMIT` in `.env`. Other endpoints are not rate-limited.
@@ -444,3 +458,40 @@ GET    /api/v1/surveys/deleted         →   lists all soft-deleted surveys
 - Pagination on the survey list endpoint
 - Admin dashboard for cache analytics and hit rate monitoring
 - WebSocket or SSE instead of polling for Critic audit results
+
+### Google Forms API Integration
+
+One high-value architectural extension would be to integrate the **Google Forms REST API** (`forms.googleapis.com`) as an export target.
+
+**Why this is a natural fit:**
+
+The AI pipeline already generates surveys as structured JSON — every question, option, and type is a well-defined object in the `SurveySchema` Pydantic model. Google's Forms API expects exactly the same shape: a JSON body describing form items, question types, and answer options. The translation from this project's internal schema to Google's request format would be a straightforward mapping layer, not a redesign.
+
+**What the integration would look like:**
+
+```
+POST /api/v1/surveys/{id}/export/google-forms
+    │
+    ├── Fetch survey from DB (already bilingual, already structured)
+    │
+    ├── Map internal schema → Google Forms batchUpdate request body
+    │       question.type = "shortAnswer"  →  TextItem
+    │       question.type = "multipleChoice" →  ChoiceItem (RADIO)
+    │       question.type = "checkbox"  →  ChoiceItem (CHECKBOX)
+    │
+    ├── POST forms.googleapis.com/v1/forms  (create blank form)
+    │
+    ├── POST forms.googleapis.com/v1/forms/{formId}:batchUpdate  (add all questions)
+    │
+    └── Return the shareable Google Form URL to the frontend
+```
+
+**Why it improves the product:**
+
+| Without integration | With integration |
+|---|---|
+| Survey lives only in this app's database | Survey is instantly publishable via a Google Form link |
+| Respondents need access to this app | Anyone with the link can fill it out |
+| No response collection built in | Google Forms handles all response collection and analytics |
+
+**Authentication note:** The integration would require users to authenticate with Google OAuth 2.0 (scope: `https://www.googleapis.com/auth/forms.body`). This pairs naturally with a future JWT-based multi-user system where each user stores their own Google OAuth refresh token.

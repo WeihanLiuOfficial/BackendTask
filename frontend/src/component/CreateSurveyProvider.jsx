@@ -241,7 +241,11 @@ export const CreateSurveyProvider = ({ children }) => {
       // Use the RETURNED merged data directly — do NOT read from state,
       // which won't have updated yet (React setState is asynchronous).
       let payloadOverrides = {};
-      if (_translationNeeded()) {
+      // Only auto-translate when there are questions to translate.
+      // If questions is empty, existing_questions=[] is sent to the backend,
+      // which deterministically triggers zero_to_one mode (not translation_only)
+      // and auto-saves a phantom AI-generated survey as a duplicate.
+      if (questions.length > 0 && _translationNeeded()) {
         toast.loading("Translating to French…", { id: "translating" });
         const { mergedTitleEn, mergedTitleFr, mergedDescEn, mergedDescFr, mergedQuestions } =
           await _autoTranslate();
@@ -260,11 +264,16 @@ export const CreateSurveyProvider = ({ children }) => {
       let saved;
       if (surveyId) {
         saved = await updateSurvey(surveyId, payload);
+        // Clear stale audit results — the user just edited the survey so
+        // any previous Critic findings are no longer valid. This removes
+        // the issue badges from the editor and the red dot from the sidebar.
+        setQualityIssueMap({});
+        setSurveyLevelIssues([]);
         toast.success("Survey updated.");
       } else {
         saved = await createSurvey(payload);
         setSurveyId(saved.id);
-        navigate(`/surveys/${saved.id}`, { replace: true });
+        navigate(`/surveys/${saved.id}`, { replace: true, state: { skipLoad: true } });
         toast.success("Survey saved.");
       }
 
@@ -395,8 +404,8 @@ export const CreateSurveyProvider = ({ children }) => {
       options:
         type === "multipleChoice" || type === "singleChoice"
           ? [
-              { id: `opt-${Date.now()}`, text: "", textBilingual: { en: "", fr: "" } },
-              { id: `opt-${Date.now() + 1}`, text: "", textBilingual: { en: "", fr: "" } },
+              { id: crypto.randomUUID(), text: "", textBilingual: { en: "", fr: "" } },
+              { id: crypto.randomUUID(), text: "", textBilingual: { en: "", fr: "" } },
             ]
           : [],
     };
@@ -446,8 +455,8 @@ export const CreateSurveyProvider = ({ children }) => {
       if (type === "multipleChoice" || type === "singleChoice") {
         if (!next[questionIndex].options || next[questionIndex].options.length < 2) {
           next[questionIndex].options = [
-            { id: `opt-${Date.now()}`, text: "", textBilingual: { en: "", fr: "" } },
-            { id: `opt-${Date.now() + 1}`, text: "", textBilingual: { en: "", fr: "" } },
+            { id: crypto.randomUUID(), text: "", textBilingual: { en: "", fr: "" } },
+            { id: crypto.randomUUID(), text: "", textBilingual: { en: "", fr: "" } },
           ];
         }
       } else {

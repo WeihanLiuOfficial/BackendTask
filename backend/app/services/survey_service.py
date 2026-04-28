@@ -23,7 +23,7 @@ from app.schemas.survey import (
     SurveySchema,
     QualityIssue,
 )
-from app.schemas.common import LocalizedText
+from app.schemas.common import LocalizedTextInput
 
 
 # ── Reusable filter for soft-deleted surveys ─────────
@@ -53,7 +53,7 @@ async def list_surveys(
     items = [
         SurveyListItem(
             id=str(survey.id),
-            title=LocalizedText(en=survey.title_en, fr=survey.title_fr),
+            title=LocalizedTextInput(en=survey.title_en, fr=survey.title_fr),
             created_at=survey.created_at,
             has_quality_issues=bool(survey.quality_issues),
         )
@@ -145,6 +145,9 @@ async def update_survey(
     survey.description_fr = payload.description.fr
     survey.is_ordered = payload.is_ordered
     survey.survey_data = payload.model_dump(mode="json")
+    # Clear stale audit results — the previous Critic run is no longer valid
+    # after the user edits the survey. null signals "not yet audited".
+    survey.quality_issues = None
 
     await db.flush()
     await db.refresh(survey)
@@ -235,7 +238,7 @@ async def list_deleted_surveys(db: AsyncSession) -> SurveyListResponse:
     items = [
         SurveyListItem(
             id=str(s.id),
-            title=LocalizedText(en=s.title_en, fr=s.title_fr),
+            title=LocalizedTextInput(en=s.title_en, fr=s.title_fr),
             created_at=s.created_at,
             updated_at=s.updated_at,
             has_quality_issues=False,
@@ -293,11 +296,11 @@ def _orm_to_response(survey: Survey) -> SurveyResponse:
     return SurveyResponse(
         id=str(survey.id),
         survey=SurveySchema(
-            title=LocalizedText(en=survey.title_en, fr=survey.title_fr),
-            description=LocalizedText(
+            title=LocalizedTextInput(en=survey.title_en, fr=survey.title_fr),
+            description=LocalizedTextInput(
                 en=survey.description_en, fr=survey.description_fr
             ),
-            is_ordered=survey.is_ordered or True,
+            is_ordered=survey.is_ordered if survey.is_ordered is not None else True,
             questions=survey_data.get("questions", []),
         ),
         created_at=survey.created_at,

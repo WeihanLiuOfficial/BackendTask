@@ -113,10 +113,16 @@ class QuestionSchema(BaseModel):
 
 
 class SurveySchema(BaseModel):
-    """The complete survey topology used for both storage and frontend rendering."""
+    """The complete survey topology used for both storage and frontend rendering.
 
-    title: LocalizedText = Field(..., description="The survey title in both languages.")
-    description: LocalizedText = Field(..., description="A short description of the survey in both languages.")
+    Uses LocalizedTextInput (not LocalizedText) for title and description so
+    that user-created surveys with one language empty can be serialized without
+    a validation error. The LLM always fills both languages per its system
+    prompt, so this relaxation does not affect AI-generated output quality.
+    """
+
+    title: LocalizedTextInput = Field(..., description="The survey title. One language may be empty for user-authored surveys.")
+    description: LocalizedTextInput = Field(..., description="A short description. One language may be empty for user-authored surveys.")
     is_ordered: bool = Field(default=True, description="Whether the frontend should auto-number the questions.")
     questions: List[QuestionSchema] = Field(..., description="The ordered list of survey questions.")
 
@@ -201,10 +207,17 @@ class GenerateSurveyRequest(BaseModel):
 
 
 class SurveyCreateRequest(BaseModel):
-    """Inbound payload for manually saving a survey (no AI involved)."""
+    """Inbound payload for manually saving a survey (no AI involved).
 
-    title: LocalizedText = Field(..., description="The survey title.")
-    description: LocalizedText = Field(..., description="The survey description.")
+    Uses LocalizedTextInput (not LocalizedText) for title and description so
+    that a user who has only authored in one language can save without the
+    other language being required. The un-filled language will be an empty
+    string, which is valid — the user can fill it later or trigger
+    auto-translation on the next save once questions are present.
+    """
+
+    title: LocalizedTextInput = Field(..., description="The survey title. fr may be empty if not yet authored.")
+    description: LocalizedTextInput = Field(..., description="The survey description. fr may be empty if not yet authored.")
     is_ordered: bool = Field(default=True, description="Whether questions should be auto-numbered.")
     questions: List[QuestionSchema] = Field(..., description="The list of questions to save.")
 
@@ -245,7 +258,7 @@ class SurveyListItem(BaseModel):
     """A lightweight survey summary for the left sidebar list."""
 
     id: str = Field(..., description="The survey's UUID.")
-    title: LocalizedText = Field(..., description="The survey title.")
+    title: LocalizedTextInput = Field(..., description="The survey title. fr may be empty for user-authored surveys.")
     created_at: datetime = Field(..., description="When the survey was created.")
     has_quality_issues: bool = Field(
         default=False,
