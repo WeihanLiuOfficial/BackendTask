@@ -30,9 +30,17 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
-def get_openai_client() -> AsyncOpenAI:
-    """Return a configured async OpenAI client instance.
+# ── OpenAI Client Singleton ────────────────────────
+# Created once at module load. The AsyncOpenAI client manages its own
+# internal httpx connection pool — reusing a single instance avoids
+# the overhead of establishing new TCP connections on every request.
+_openai_client: AsyncOpenAI = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
-    Uses the API key from validated pydantic-settings configuration.
+
+def get_openai_client() -> AsyncOpenAI:
+    """Return the shared async OpenAI client singleton.
+
+    The client is created once at module import time and reused
+    across all requests to maximize connection pool efficiency.
     """
-    return AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+    return _openai_client

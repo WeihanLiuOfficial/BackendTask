@@ -41,6 +41,7 @@ class Survey(Base):
     survey_data: dict = Column(JSONB, nullable=False, doc="Full survey topology (questions, options, localized text).")
     is_deleted: bool = Column(Boolean, default=False, server_default=sa.text("false"), nullable=False, doc="Soft delete flag.")
     deleted_at: datetime = Column(DateTime(timezone=True), nullable=True, doc="Timestamp of soft deletion.")
+    quality_issues = Column(JSONB, nullable=True, doc="Quality issues found by the Critic agent. Null=not audited, []=clean.")
     created_at: datetime = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: datetime = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

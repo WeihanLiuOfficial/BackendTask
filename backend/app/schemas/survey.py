@@ -83,6 +83,50 @@ class SurveySchema(BaseModel):
     questions: List[QuestionSchema] = Field(..., description="The ordered list of survey questions.")
 
 
+# ── Quality Issue Schemas ───────────────────────────
+
+
+class QualityIssue(BaseModel):
+    """A single quality concern identified by the Critic agent.
+
+    Can be question-level (targets a specific question by ID)
+    or survey-level (applies to the survey as a whole).
+    """
+
+    issue_type: Literal["question_level", "survey_level"] = Field(
+        ...,
+        description="Whether this issue targets a specific question or the survey overall.",
+    )
+    question_id: Optional[str] = Field(
+        default=None,
+        description="The UUID of the affected question. Null for survey-level issues.",
+    )
+    severity: Literal["info", "warning", "critical"] = Field(
+        ...,
+        description="Issue severity: info (suggestion), warning (should fix), critical (must fix).",
+    )
+    message_en: str = Field(
+        ...,
+        description="Human-readable issue description in English.",
+    )
+    message_fr: str = Field(
+        ...,
+        description="Human-readable issue description in French.",
+    )
+
+
+class CriticResponse(BaseModel):
+    """Structured Output schema for the Critic agent's evaluation.
+
+    Passed directly to OpenAI's response_format to enforce valid JSON output.
+    """
+
+    issues: List[QualityIssue] = Field(
+        default_factory=list,
+        description="List of quality issues found. Empty list means the survey passed all checks.",
+    )
+
+
 # ── API Request Schemas ─────────────────────────────
 
 
@@ -110,6 +154,12 @@ class GenerateSurveyRequest(BaseModel):
         default=True,
         description="Whether the AI should invent additional questions beyond the existing ones.",
     )
+    question_count: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=50,
+        description="Desired number of questions. If null, the AI decides based on the topic and description.",
+    )
 
 
 class SurveyCreateRequest(BaseModel):
@@ -135,6 +185,10 @@ class SurveyResponse(BaseModel):
         default=None,
         description="Whether this response was served from the semantic cache (generation endpoint only).",
     )
+    quality_issues: Optional[List[QualityIssue]] = Field(
+        default=None,
+        description="Quality concerns identified by the Critic agent. Null = not yet audited, [] = audited and clean.",
+    )
 
 
 class GenerateSurveyResponse(BaseModel):
@@ -155,6 +209,10 @@ class SurveyListItem(BaseModel):
     id: str = Field(..., description="The survey's UUID.")
     title: LocalizedText = Field(..., description="The survey title.")
     created_at: datetime = Field(..., description="When the survey was created.")
+    has_quality_issues: bool = Field(
+        default=False,
+        description="Whether the Critic has flagged quality issues. Used to visually mark surveys in the sidebar.",
+    )
 
 
 class SurveyListResponse(BaseModel):

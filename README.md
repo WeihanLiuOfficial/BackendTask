@@ -247,3 +247,47 @@ backend/
 - WebSocket streaming for real-time generation progress
 - Pagination on the survey list endpoint
 - Admin dashboard for cache analytics and hit rate monitoring
+
+---
+
+## AI Generation Pipeline
+
+### Tri-Modal Generation
+
+The /api/v1/surveys/generate endpoint supports three execution paths determined automatically from the request payload:
+
+| Modality | Trigger | Behavior |
+|---|---|---|
+| **Zero-to-One** | No existing questions | Full survey synthesis from scratch |
+| **Hybrid Expansion** | Existing questions + dd_more_questions=true | Keeps existing, generates complementary new ones |
+| **Translation-Only** | Existing questions + dd_more_questions=false | Formats and translates, no new questions |
+
+### Semantic Cache
+
+The cache is **global** — all users share the same cached results. This is intentional: there are no user accounts in the current system, so there is no per-user context to segment by. In a future multi-tenant deployment, cache entries would be scoped by organization or user ID.
+
+- **Model:** 	ext-embedding-3-small (1536 dimensions)
+- **Similarity threshold:**  .95 cosine similarity (configurable via SIMILARITY_THRESHOLD in .env)
+- **Index:** HNSW on survey_cache.prompt_embedding with m=16, ef_construction=64
+- **Scope:** Cache only applies to Zero-to-One mode. Hybrid and Translation-Only are context-dependent and never cached.
+
+### Quality Critic (Agent 2)
+
+The Critic agent evaluates generated surveys for quality issues **asynchronously** after the HTTP response is returned, so it has zero impact on response latency.
+
+**Trigger policy:**
+- **Auto-runs** on AI-generated surveys (cache misses only — cached results were already audited when first generated)
+- **Manual trigger** via POST /api/v1/surveys/{id}/audit for any survey (AI or manually authored)
+- Does **not** auto-run on manual creates/updates (cost optimization)
+
+**Evaluation dimensions:**
+- *Question-level:* bias, leading phrasing, ambiguity, poor French translation, missing options
+- *Survey-level:* question type fatigue, survey length, logical ordering, missing coverage
+
+Results are written to surveys.quality_issues (JSONB). 
+ull = not yet audited, [] = audited and clean.
+
+### Rate Limiting
+
+The /generate endpoint is rate-limited to 10 requests/minute per IP (configurable via RATE_LIMIT in .env). Other endpoints are not rate-limited.
+

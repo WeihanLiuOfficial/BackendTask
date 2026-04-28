@@ -61,7 +61,10 @@ def register_exception_handlers(app: FastAPI) -> None:
         exc: Exception,
     ) -> JSONResponse:
         """Handle unexpected internal server errors."""
-        # TODO: Log the full traceback via structlog before returning a sanitized response
+        import traceback, sys
+        print(f"\n=== UNHANDLED 500 on {request.method} {request.url} ===", file=sys.stderr)
+        traceback.print_exception(type(exc), exc, exc.__traceback__, file=sys.stderr)
+        print("=== END 500 ===\n", file=sys.stderr)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=ErrorResponse(

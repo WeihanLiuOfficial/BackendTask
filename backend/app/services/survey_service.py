@@ -21,6 +21,7 @@ from app.schemas.survey import (
     SurveyListResponse,
     SurveyListItem,
     SurveySchema,
+    QualityIssue,
 )
 from app.schemas.common import LocalizedText
 
@@ -54,6 +55,7 @@ async def list_surveys(
             id=str(survey.id),
             title=LocalizedText(en=survey.title_en, fr=survey.title_fr),
             created_at=survey.created_at,
+            has_quality_issues=bool(survey.quality_issues),
         )
         for survey in surveys
     ]
@@ -225,6 +227,11 @@ def _orm_to_response(survey: Survey) -> SurveyResponse:
     """
     survey_data = survey.survey_data
 
+    # Parse quality_issues from JSONB if present
+    quality_issues = None
+    if survey.quality_issues is not None:
+        quality_issues = [QualityIssue(**qi) for qi in survey.quality_issues]
+
     return SurveyResponse(
         id=str(survey.id),
         survey=SurveySchema(
@@ -237,4 +244,5 @@ def _orm_to_response(survey: Survey) -> SurveyResponse:
         ),
         created_at=survey.created_at,
         updated_at=survey.updated_at,
+        quality_issues=quality_issues,
     )
