@@ -11,6 +11,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Float, String, Boolean, Text, func
+import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from pgvector.sqlalchemy import Vector
 
@@ -36,8 +37,10 @@ class Survey(Base):
     title_fr: str = Column(String(500), nullable=False, doc="Survey title in French.")
     description_en: str = Column(Text, nullable=False, doc="Survey description in English.")
     description_fr: str = Column(Text, nullable=False, doc="Survey description in French.")
-    is_ordered: bool = Column(Boolean, default=True, doc="Whether the frontend should auto-number questions.")
+    is_ordered: bool = Column(Boolean, default=True, server_default=sa.text("true"), doc="Whether the frontend should auto-number questions.")
     survey_data: dict = Column(JSONB, nullable=False, doc="Full survey topology (questions, options, localized text).")
+    is_deleted: bool = Column(Boolean, default=False, server_default=sa.text("false"), nullable=False, doc="Soft delete flag.")
+    deleted_at: datetime = Column(DateTime(timezone=True), nullable=True, doc="Timestamp of soft deletion.")
     created_at: datetime = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: datetime = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

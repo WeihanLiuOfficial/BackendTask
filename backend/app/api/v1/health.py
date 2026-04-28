@@ -19,8 +19,19 @@ async def health_check(
 ) -> dict[str, str]:
     """Verify API liveness and database connectivity.
 
+    Executes a lightweight SELECT 1 against the database to confirm
+    the connection pool is healthy and the database is responding.
+
     Returns:
         A JSON object with the API and database status.
     """
-    # TODO: Execute a lightweight DB probe (SELECT 1) and report status
-    raise NotImplementedError
+    try:
+        await db.execute(text("SELECT 1"))
+        db_status = "healthy"
+    except Exception:
+        db_status = "unhealthy"
+
+    return {
+        "api": "healthy",
+        "database": db_status,
+    }

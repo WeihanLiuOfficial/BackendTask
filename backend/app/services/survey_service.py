@@ -1,70 +1,40 @@
 """Survey service — business logic orchestrator.
 
 This module acts as the intermediary between the API layer and the
-underlying AI agents + database. It determines the Tri-Modal execution
-path, delegates to the appropriate agent, and persists results.
+underlying AI agents + database. It handles all CRUD operations and
+determines the Tri-Modal execution path for generation requests.
+
+All queries filter out soft-deleted surveys (is_deleted=false).
 """
 
-from typing import Optional, List
-from uuid import UUID
+import uuid
+from datetime import datetime, timezone
+from typing import Optional
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from openai import AsyncOpenAI
 
+from app.models.survey import Survey
 from app.schemas.survey import (
-    GenerateSurveyRequest,
-    GenerateSurveyResponse,
     SurveyCreateRequest,
     SurveyResponse,
     SurveyListResponse,
+    SurveyListItem,
     SurveySchema,
-    QuestionSchema,
 )
+from app.schemas.common import LocalizedText
 
 
-async def determine_modality(
-    payload: GenerateSurveyRequest,
-) -> str:
-    """Determine the Tri-Modal execution path based on the request payload.
-
-    Returns:
-        One of: 'zero_to_one', 'hybrid_expansion', 'translation_only'
-    """
-    # TODO: Inspect payload.existing_questions and payload.add_more_questions
-    raise NotImplementedError
-
-
-async def generate_survey(
-    payload: GenerateSurveyRequest,
-    db: AsyncSession,
-    openai_client: AsyncOpenAI,
-) -> GenerateSurveyResponse:
-    """Orchestrate the full survey generation pipeline.
-
-    Steps:
-        1. Determine modality.
-        2. For zero-to-one: check semantic cache.
-        3. On cache miss: invoke Agent 1 (Generator).
-        4. Persist the generated survey.
-        5. Return the response (Agent 2 is attached as a BackgroundTask
-           by the calling route handler, not here).
-
-    Args:
-        payload: The validated generation request.
-        db: Async database session.
-        openai_client: Configured async OpenAI client.
-
-    Returns:
-        The generated survey response with modality and cache_hit metadata.
-    """
-    # TODO: Implement orchestration logic
-    raise NotImplementedError
+# ── Reusable filter for soft-deleted surveys ─────────
+def _not_deleted():
+    """Return a SQLAlchemy filter clause excluding soft-deleted surveys."""
+    return Survey.is_deleted == False  # noqa: E712 — SQLAlchemy requires == not 'is'
 
 
 async def list_surveys(
     db: AsyncSession,
 ) -> SurveyListResponse:
-    """Retrieve all surveys ordered by creation date (descending).
+    """Retrieve all non-deleted surveys ordered by creation date (descending).
 
     Args:
         db: Async database session.
@@ -72,15 +42,30 @@ async def list_surveys(
     Returns:
         A list of survey summaries for the left sidebar.
     """
-    # TODO: Query Survey table
-    raise NotImplementedError
+    result = await db.execute(
+        select(Survey)
+        .where(_not_deleted())
+        .order_by(Survey.created_at.desc())
+    )
+    surveys = result.scalars().all()
+
+    items = [
+        SurveyListItem(
+            id=str(survey.id),
+            title=LocalizedText(en=survey.title_en, fr=survey.title_fr),
+            created_at=survey.created_at,
+        )
+        for survey in surveys
+    ]
+
+    return SurveyListResponse(surveys=items, total=len(items))
 
 
 async def get_survey_by_id(
-    survey_id: UUID,
+    survey_id: uuid.UUID,
     db: AsyncSession,
 ) -> Optional[SurveyResponse]:
-    """Retrieve a single survey by its UUID.
+    """Retrieve a single non-deleted survey by its UUID.
 
     Args:
         survey_id: The UUID of the target survey.
@@ -89,8 +74,15 @@ async def get_survey_by_id(
     Returns:
         The full survey response, or None if not found.
     """
-    # TODO: Fetch from Survey table by primary key
-    raise NotImplementedError
+    result = await db.execute(
+        select(Survey).where(Survey.id == survey_id, _not_deleted())
+    )
+    survey = result.scalar_one_or_none()
+
+    if survey is None:
+        return None
+
+    return _orm_to_response(survey)
 
 
 async def save_survey(
@@ -106,16 +98,28 @@ async def save_survey(
     Returns:
         The persisted survey with generated metadata.
     """
-    # TODO: Create Survey ORM instance, add to session
-    raise NotImplementedError
+    survey = Survey(
+        id=uuid.uuid4(),
+        title_en=payload.title.en,
+        title_fr=payload.title.fr,
+        description_en=payload.description.en,
+        description_fr=payload.description.fr,
+        is_ordered=payload.is_ordered,
+        survey_data=payload.model_dump(mode="json"),
+    )
+    db.add(survey)
+    await db.flush()
+    await db.refresh(survey)
+
+    return _orm_to_response(survey)
 
 
 async def update_survey(
-    survey_id: UUID,
+    survey_id: uuid.UUID,
     payload: SurveyCreateRequest,
     db: AsyncSession,
-) -> SurveyResponse:
-    """Update an existing survey with new data.
+) -> Optional[SurveyResponse]:
+    """Update an existing non-deleted survey with new data.
 
     Args:
         survey_id: The UUID of the survey to update.
@@ -123,21 +127,114 @@ async def update_survey(
         db: Async database session.
 
     Returns:
-        The updated survey response.
+        The updated survey response, or None if not found.
     """
-    # TODO: Fetch, merge, persist
-    raise NotImplementedError
+    result = await db.execute(
+        select(Survey).where(Survey.id == survey_id, _not_deleted())
+    )
+    survey = result.scalar_one_or_none()
+
+    if survey is None:
+        return None
+
+    survey.title_en = payload.title.en
+    survey.title_fr = payload.title.fr
+    survey.description_en = payload.description.en
+    survey.description_fr = payload.description.fr
+    survey.is_ordered = payload.is_ordered
+    survey.survey_data = payload.model_dump(mode="json")
+
+    await db.flush()
+    await db.refresh(survey)
+
+    return _orm_to_response(survey)
 
 
 async def delete_survey(
-    survey_id: UUID,
+    survey_id: uuid.UUID,
     db: AsyncSession,
-) -> None:
-    """Delete a survey by its UUID.
+) -> bool:
+    """Soft-delete a survey by setting is_deleted=True and deleted_at.
+
+    The survey remains in the database for potential recovery.
 
     Args:
-        survey_id: The UUID of the survey to delete.
+        survey_id: The UUID of the survey to soft-delete.
         db: Async database session.
+
+    Returns:
+        True if the survey was found and soft-deleted, False if not found.
     """
-    # TODO: Fetch and delete
-    raise NotImplementedError
+    result = await db.execute(
+        select(Survey).where(Survey.id == survey_id, _not_deleted())
+    )
+    survey = result.scalar_one_or_none()
+
+    if survey is None:
+        return False
+
+    survey.is_deleted = True
+    survey.deleted_at = datetime.now(timezone.utc)
+
+    return True
+
+
+async def restore_survey(
+    survey_id: uuid.UUID,
+    db: AsyncSession,
+) -> Optional[SurveyResponse]:
+    """Restore a soft-deleted survey by clearing the deletion flags.
+
+    Only surveys that are currently soft-deleted can be restored.
+
+    Args:
+        survey_id: The UUID of the survey to restore.
+        db: Async database session.
+
+    Returns:
+        The restored survey response, or None if not found or not deleted.
+    """
+    result = await db.execute(
+        select(Survey).where(Survey.id == survey_id, Survey.is_deleted == True)  # noqa: E712
+    )
+    survey = result.scalar_one_or_none()
+
+    if survey is None:
+        return None
+
+    survey.is_deleted = False
+    survey.deleted_at = None
+
+    await db.flush()
+    await db.refresh(survey)
+
+    return _orm_to_response(survey)
+
+
+# ── Private Helpers ──────────────────────────────────
+
+
+def _orm_to_response(survey: Survey) -> SurveyResponse:
+    """Convert a SQLAlchemy Survey ORM instance to a Pydantic SurveyResponse.
+
+    Args:
+        survey: The ORM instance.
+
+    Returns:
+        A validated SurveyResponse.
+    """
+    survey_data = survey.survey_data
+
+    return SurveyResponse(
+        id=str(survey.id),
+        survey=SurveySchema(
+            title=LocalizedText(en=survey.title_en, fr=survey.title_fr),
+            description=LocalizedText(
+                en=survey.description_en, fr=survey.description_fr
+            ),
+            is_ordered=survey.is_ordered or True,
+            questions=survey_data.get("questions", []),
+        ),
+        created_at=survey.created_at,
+        updated_at=survey.updated_at,
+    )

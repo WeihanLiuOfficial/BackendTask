@@ -40,12 +40,17 @@ def register_exception_handlers(app: FastAPI) -> None:
         request: Request,
         exc: Exception,
     ) -> JSONResponse:
-        """Handle 404 Not Found errors."""
+        """Handle 404 Not Found errors.
+
+        Preserves the detail message from endpoint-raised HTTPExceptions.
+        Falls back to a generic message for unmatched routes.
+        """
+        detail = getattr(exc, "detail", "The requested resource was not found.")
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
             content=ErrorResponse(
                 error="not_found",
-                detail="The requested resource was not found.",
+                detail=detail,
                 status_code=404,
             ).model_dump(),
         )

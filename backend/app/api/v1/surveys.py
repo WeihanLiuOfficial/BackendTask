@@ -2,18 +2,18 @@
 
 This module contains all survey-related route handlers:
 - Standard CRUD operations (list, get, create, update, delete)
-- Tri-Modal AI generation endpoint with semantic caching
-- Background task attachment for Agent 2 (The Critic)
+- Tri-Modal AI generation endpoint with semantic caching (Phase 4)
+- All endpoints are protected by Bearer token auth (Option B: disabled by default)
 """
 
-from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from openai import AsyncOpenAI
 
 from app.dependencies import get_db_session, get_openai_client
+from app.middleware.auth import verify_bearer_token
 from app.schemas.survey import (
     GenerateSurveyRequest,
     GenerateSurveyResponse,
@@ -21,6 +21,7 @@ from app.schemas.survey import (
     SurveyResponse,
     SurveyListResponse,
 )
+from app.services import survey_service
 
 router = APIRouter()
 
@@ -31,39 +32,44 @@ router = APIRouter()
 @router.get("", response_model=SurveyListResponse)
 async def list_surveys(
     db: AsyncSession = Depends(get_db_session),
+    _auth: str = Depends(verify_bearer_token),
 ) -> SurveyListResponse:
     """List all saved surveys for the left sidebar navigation.
 
     Returns:
         A list of survey summaries (id, title, created_at).
     """
-    # TODO: Query Survey table, return list ordered by created_at DESC
-    raise NotImplementedError
+    return await survey_service.list_surveys(db)
 
 
 @router.get("/{survey_id}", response_model=SurveyResponse)
 async def get_survey(
     survey_id: UUID,
-    lang: Optional[str] = Query(default=None, regex="^(en|fr)$"),
     db: AsyncSession = Depends(get_db_session),
+    _auth: str = Depends(verify_bearer_token),
 ) -> SurveyResponse:
     """Retrieve a specific survey by ID.
 
     Args:
         survey_id: The UUID of the survey to retrieve.
-        lang: Optional language code to flatten LocalizedText fields.
 
     Returns:
         The full survey payload including all questions and options.
     """
-    # TODO: Fetch survey by ID, optionally flatten bilingual fields
-    raise NotImplementedError
+    result = await survey_service.get_survey_by_id(survey_id, db)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Survey with id '{survey_id}' not found.",
+        )
+    return result
 
 
 @router.post("", response_model=SurveyResponse, status_code=201)
 async def create_survey(
     payload: SurveyCreateRequest,
     db: AsyncSession = Depends(get_db_session),
+    _auth: str = Depends(verify_bearer_token),
 ) -> SurveyResponse:
     """Save a manually authored survey.
 
@@ -73,8 +79,7 @@ async def create_survey(
     Returns:
         The persisted survey with a generated UUID.
     """
-    # TODO: Validate payload, persist to Survey table, return created entity
-    raise NotImplementedError
+    return await survey_service.save_survey(payload, db)
 
 
 @router.put("/{survey_id}", response_model=SurveyResponse)
@@ -82,6 +87,7 @@ async def update_survey(
     survey_id: UUID,
     payload: SurveyCreateRequest,
     db: AsyncSession = Depends(get_db_session),
+    _auth: str = Depends(verify_bearer_token),
 ) -> SurveyResponse:
     """Update an existing survey with manual edits.
 
@@ -92,22 +98,61 @@ async def update_survey(
     Returns:
         The updated survey payload.
     """
-    # TODO: Fetch survey, merge changes, persist, return updated entity
-    raise NotImplementedError
+    result = await survey_service.update_survey(survey_id, payload, db)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Survey with id '{survey_id}' not found.",
+        )
+    return result
 
 
 @router.delete("/{survey_id}", status_code=204)
 async def delete_survey(
     survey_id: UUID,
     db: AsyncSession = Depends(get_db_session),
+    _auth: str = Depends(verify_bearer_token),
 ) -> None:
-    """Delete a survey by ID.
+    """Soft-delete a survey by ID.
+
+    The survey is marked as deleted but remains in the database
+    for potential recovery.
 
     Args:
         survey_id: The UUID of the survey to delete.
     """
-    # TODO: Fetch survey, delete from DB, return 204 No Content
-    raise NotImplementedError
+    deleted = await survey_service.delete_survey(survey_id, db)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Survey with id '{survey_id}' not found.",
+        )
+
+
+@router.patch("/{survey_id}/restore", response_model=SurveyResponse)
+async def restore_survey(
+    survey_id: UUID,
+    db: AsyncSession = Depends(get_db_session),
+    _auth: str = Depends(verify_bearer_token),
+) -> SurveyResponse:
+    """Restore a soft-deleted survey.
+
+    Reverts the is_deleted flag and clears the deleted_at timestamp,
+    making the survey visible again in all queries.
+
+    Args:
+        survey_id: The UUID of the soft-deleted survey to restore.
+
+    Returns:
+        The restored survey payload.
+    """
+    result = await survey_service.restore_survey(survey_id, db)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Survey with id '{survey_id}' not found or is not deleted.",
+        )
+    return result
 
 
 # ── AI Generation Endpoint ──────────────────────────
@@ -119,13 +164,14 @@ async def generate_survey(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db_session),
     openai_client: AsyncOpenAI = Depends(get_openai_client),
+    _auth: str = Depends(verify_bearer_token),
 ) -> GenerateSurveyResponse:
     """Tri-Modal AI survey generation endpoint.
 
     Execution flow:
         1. Determine modality (Zero-to-One / Hybrid / Translation-Only).
-        2. For Zero-to-One: Check semantic cache via pgvector similarity search.
-        3. On cache miss: Invoke Agent 1 (Generator) with Structured Outputs.
+        2. For Zero-to-One: check semantic cache via pgvector similarity search.
+        3. On cache miss: invoke Agent 1 (Generator) with Structured Outputs.
         4. Return the generated survey immediately to the client.
         5. Attach Agent 2 (Critic) to BackgroundTasks for async QA.
 
@@ -139,5 +185,8 @@ async def generate_survey(
     Returns:
         The generated survey payload ready for frontend rendering.
     """
-    # TODO: Implement Tri-Modal routing, cache lookup, generation, and critic dispatch
-    raise NotImplementedError
+    # TODO: Implement in Phase 4 (AI Integration)
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="AI generation is not yet implemented. Coming in Phase 4.",
+    )

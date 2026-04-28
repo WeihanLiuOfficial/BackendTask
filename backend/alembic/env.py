@@ -12,6 +12,7 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.models.database import Base
+from app.models import survey as _survey_models  # noqa: F401 — import triggers model registration
 from app.config import settings
 
 # Alembic Config object

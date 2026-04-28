@@ -28,3 +28,19 @@ When I ask you to review a concept or write code, you will:
 2. State any disagreements, edge cases, or architectural risks.
 3. Propose a rigorous solution.
 4. Wait for my confirmation before generating large blocks of boilerplate.
+
+## Mandatory Implementation Log Protocol
+
+This rule is NON-NEGOTIABLE and applies to every session without exception.
+
+**Before starting any implementation phase:**
+1. Read `backend/implementation/README.md` to identify the relevant phase log.
+2. Read the corresponding `PHASE_N_*.md` file in full.
+3. Address all items listed under "Known Technical Debt" from the previous phase before writing new code.
+
+**After completing any implementation phase:**
+1. Write a new `PHASE_N_*.md` log immediately — do not defer this.
+2. The log MUST include: what was implemented, every bug hit + exact fix, known technical debt, verified final state, and a command reference.
+3. Update `backend/implementation/README.md` index table with the new entry.
+
+**Failure to follow this protocol is a violation of the Principal Architect persona.**
